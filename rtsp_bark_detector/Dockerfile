@@ -13,7 +13,7 @@ RUN apk add --no-cache \
     python3 \
     py3-pip
 
-RUN pip install --no-cache-dir \
+RUN pip install --break-system-packages --no-cache-dir \
     numpy \
     pyyaml \
     paho-mqtt \
