@@ -9,7 +9,9 @@ COPY models/ /app/models/
 COPY config/config.yaml /app/config.yaml
 
 RUN apk add --no-cache \
-    ffmpeg
+    ffmpeg \
+    python3 \
+    py3-pip
 
 RUN pip install --no-cache-dir \
     numpy \
