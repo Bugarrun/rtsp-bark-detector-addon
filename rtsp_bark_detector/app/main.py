@@ -6,9 +6,7 @@ import numpy as np
 import shutil
 import signal
 
-from mediapipe.tasks.python import BaseOptions
-from mediapipe.tasks.python.audio import AudioClassifierOptions, AudioClassifier
-from mediapipe.tasks.python.components.containers import AudioData
+from tflite_runtime.interpreter import Interpreter
 
 from detector import BarkDetector
 from ha_bridge import HABridge
@@ -56,13 +54,12 @@ ha = HABridge(
 )
 
 
-options = AudioClassifierOptions(
-    base_options=BaseOptions(model_asset_path=MODEL),
-    max_results=20
-)
 
-classifier = AudioClassifier.create_from_options(options)
+interpreter = Interpreter(model_path=MODEL)
+interpreter.allocate_tensors()
 
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 logger.info("RTSP Bark Detector ready")
 
