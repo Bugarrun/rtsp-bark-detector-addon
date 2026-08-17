@@ -1,4 +1,4 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 
 FROM $BUILD_FROM
 
@@ -6,7 +6,7 @@ WORKDIR /app
 
 COPY app/ /app/
 COPY models/ /app/models/
-COPY config.yaml /app/
+COPY config/config.yaml /app/config.yaml
 
 RUN apk add --no-cache \
     ffmpeg
