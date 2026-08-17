@@ -17,7 +17,6 @@ RUN pip install --break-system-packages --no-cache-dir \
     numpy \
     pyyaml \
     paho-mqtt \
-    mediapipe \
     imageio-ffmpeg
 
 COPY run.sh /run.sh
