@@ -6,7 +6,7 @@ import numpy as np
 import shutil
 import signal
 
-from tflite_runtime.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import Interpreter
 
 from detector import BarkDetector
 from ha_bridge import HABridge
