@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:latest
 
 FROM $BUILD_FROM
 
@@ -8,12 +8,13 @@ COPY app/ /app/
 COPY models/ /app/models/
 COPY config/config.yaml /app/config.yaml
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
-    py3-pip
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --break-system-packages --no-cache-dir \
+RUN pip3 install --no-cache-dir \
     numpy \
     pyyaml \
     paho-mqtt \
