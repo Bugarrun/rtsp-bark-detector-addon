@@ -17,7 +17,8 @@ RUN pip install --break-system-packages --no-cache-dir \
     numpy \
     pyyaml \
     paho-mqtt \
-    imageio-ffmpeg
+    imageio-ffmpeg \
+    tflite-runtime
 
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
