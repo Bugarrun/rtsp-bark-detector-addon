@@ -18,7 +18,7 @@ RUN pip install --break-system-packages --no-cache-dir \
     pyyaml \
     paho-mqtt \
     imageio-ffmpeg \
-    tflite-runtime
+    tensorflow
 
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
