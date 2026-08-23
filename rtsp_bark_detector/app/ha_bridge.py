@@ -17,29 +17,24 @@ class HABridge:
 
         self.device_config = device_config
 
-
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id="dog_bark_detector",
             clean_session=True
         )
 
-
         self.client.username_pw_set(
             self.username,
             self.password
         )
-
 
         self.client.reconnect_delay_set(
             min_delay=1,
             max_delay=60
         )
 
-
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
-
 
         self.client.connect(
             self.broker,
@@ -47,12 +42,7 @@ class HABridge:
             60
         )
 
-
         self.client.loop_start()
-
-
-        self.publish_discovery()
-
 
         self.logger.info(
             "MQTT HA bridge started"
@@ -84,7 +74,6 @@ class HABridge:
 
         }
 
-
         for sensor_id, data in sensors.items():
 
             payload = {
@@ -102,22 +91,15 @@ class HABridge:
                 }
             }
 
-
             if "payload_on" in data:
-
                 payload["payload_on"] = data["payload_on"]
                 payload["payload_off"] = data["payload_off"]
 
-
             if "device_class" in data:
-
                 payload["device_class"] = data["device_class"]
 
-
             if "unit" in data:
-
                 payload["unit_of_measurement"] = data["unit"]
-
 
             if sensor_id == "dog_barking":
 
@@ -133,13 +115,11 @@ class HABridge:
                     f"{sensor_id}/config"
                 )
 
-
             self.client.publish(
                 topic,
                 json.dumps(payload),
                 retain=True
             )
-
 
         self.logger.info(
             "MQTT discovery published"
@@ -151,7 +131,6 @@ class HABridge:
         if not event:
             return
 
-
         if event["event"] == "started":
 
             self.client.publish(
@@ -160,11 +139,9 @@ class HABridge:
                 retain=True
             )
 
-
             self.logger.info(
                 "MQTT HA ENTITY: dog_barking = ON"
             )
-
 
         elif event["event"] == "stopped":
 
@@ -174,20 +151,17 @@ class HABridge:
                 retain=True
             )
 
-
             self.client.publish(
                 "dog_bark_detector/duration",
                 event["duration"],
                 retain=True
             )
 
-
             self.client.publish(
                 "dog_bark_detector/confidence",
                 event["confidence"],
                 retain=True
             )
-
 
             self.logger.info(
                 "MQTT HA ENTITY: dog_barking = OFF"
@@ -201,6 +175,8 @@ class HABridge:
             self.logger.info(
                 "MQTT connected successfully"
             )
+
+            self.publish_discovery()
 
         else:
 
