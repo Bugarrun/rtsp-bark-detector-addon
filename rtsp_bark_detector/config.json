@@ -1,6 +1,6 @@
 {
   "name": "RTSP Bark Detector",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "slug": "rtsp_bark_detector",
   "description": "AI dog bark detection using RTSP audio and YAMNet",
   "arch": [
