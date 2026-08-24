@@ -9,12 +9,6 @@ settings:
   bark_release_seconds: 5
   model: "models/yamnet.tflite"
 
-mqtt:
-  broker: "core-mosquitto"
-  port: 1883
-  username: "dog_bark_detector"
-  password: "DogBark1234!"
-
 device:
   name: "Dog Bark Detector"
   manufacturer: "Luca Lunetti"
