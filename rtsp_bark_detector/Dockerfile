@@ -6,7 +6,7 @@ WORKDIR /app
 
 COPY app/ /app/
 COPY models/ /app/models/
-COPY config/config.yaml /app/config.yaml
+COPY config/defaults.yaml /app/config.yaml
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
