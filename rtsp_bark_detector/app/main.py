@@ -5,6 +5,7 @@ import yaml
 import numpy as np
 import shutil
 import signal
+import os
 
 from tensorflow.lite.python.interpreter import Interpreter
 
@@ -22,6 +23,13 @@ logger = logging.getLogger("bark_addon")
 
 with open("config.yaml", "r") as file:
     config = yaml.safe_load(file)
+
+config["mqtt"] = {
+    "broker": os.environ["MQTT_HOST"],
+    "port": int(os.environ["MQTT_PORT"]),
+    "username": os.environ["MQTT_USERNAME"],
+    "password": os.environ["MQTT_PASSWORD"]
+}
 
 
 RTSP_URL = config["camera"]["rtsp_url"]
