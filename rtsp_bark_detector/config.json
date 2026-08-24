@@ -13,6 +13,16 @@
   "services": [
     "mqtt:need"
   ],
-  "options": {},
-  "schema": {}
+  "options": {
+    "rtsp_url": "",
+    "bark_threshold": 0.7,
+    "dog_threshold": 0.7,
+    "bark_release_seconds": 5
+  },
+  "schema": {
+    "rtsp_url": "str",
+    "bark_threshold": "float",
+    "dog_threshold": "float",
+    "bark_release_seconds": "int"
+  }
 }

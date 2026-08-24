@@ -6,6 +6,7 @@ import numpy as np
 import shutil
 import signal
 import os
+import json
 
 from tensorflow.lite.python.interpreter import Interpreter
 
@@ -23,6 +24,32 @@ logger = logging.getLogger("bark_addon")
 
 with open("config.yaml", "r") as file:
     config = yaml.safe_load(file)
+
+options_path = "/data/options.json"
+
+if os.path.exists(options_path):
+    with open(options_path, "r") as file:
+        options = json.load(file)
+
+    config["camera"]["rtsp_url"] = options.get(
+        "rtsp_url",
+        config["camera"]["rtsp_url"]
+    )
+
+    config["thresholds"]["bark"] = options.get(
+        "bark_threshold",
+        config["thresholds"]["bark"]
+    )
+
+    config["thresholds"]["dog"] = options.get(
+        "dog_threshold",
+        config["thresholds"]["dog"]
+    )
+
+    config["settings"]["bark_release_seconds"] = options.get(
+        "bark_release_seconds",
+        config["settings"]["bark_release_seconds"]
+    )
 
 config["mqtt"] = {
     "broker": os.environ["MQTT_HOST"],
