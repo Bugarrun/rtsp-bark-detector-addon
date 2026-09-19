@@ -24,7 +24,7 @@ class AudioStream:
         self.rtsp_url = rtsp_url
         self.process = subprocess.Popen(
             [ffmpeg, "-hide_banner", "-loglevel", "warning", "-nostdin",
-             "-rtsp_transport", "tcp", "-rw_timeout", "15000000",
+             "-rtsp_transport", "tcp",
              "-i", rtsp_url, "-map", "0:a:0", "-vn", "-ac", "1",
              "-ar", "16000", "-acodec", "pcm_s16le", "-f", "s16le", "pipe:1"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
