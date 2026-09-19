@@ -1,189 +1,112 @@
-import subprocess
+import json
 import logging
-import time
-import yaml
-import numpy as np
+import math
+import os
 import shutil
 import signal
-import os
-import json
+import time
 
-from tensorflow.lite.python.interpreter import Interpreter
+import yaml
 
+from audio_stream import AudioStream, AudioStreamError
+from classifier import BarkClassifier
 from detector import BarkDetector
 from ha_bridge import HABridge
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(message)s"
-)
 
 logger = logging.getLogger("bark_addon")
 
 
-with open("config.yaml", "r") as file:
-    config = yaml.safe_load(file)
-
-options_path = "/data/options.json"
-
-if os.path.exists(options_path):
-    with open(options_path, "r") as file:
-        options = json.load(file)
-
-    config["camera"]["rtsp_url"] = options.get(
-        "rtsp_url",
-        config["camera"]["rtsp_url"]
-    )
-
-    config["thresholds"]["bark"] = options.get(
-        "bark_threshold",
-        config["thresholds"]["bark"]
-    )
-
-    config["thresholds"]["dog"] = options.get(
-        "dog_threshold",
-        config["thresholds"]["dog"]
-    )
-
-    config["settings"]["bark_release_seconds"] = options.get(
-        "bark_release_seconds",
-        config["settings"]["bark_release_seconds"]
-    )
-
-config["mqtt"] = {
-    "broker": os.environ["MQTT_HOST"],
-    "port": int(os.environ["MQTT_PORT"]),
-    "username": os.environ["MQTT_USERNAME"],
-    "password": os.environ["MQTT_PASSWORD"]
-}
-
-
-RTSP_URL = config["camera"]["rtsp_url"]
-
-BARK_THRESHOLD = config["thresholds"]["bark"]
-DOG_THRESHOLD = config["thresholds"]["dog"]
-BARK_RELEASE_SECONDS = config["settings"]["bark_release_seconds"]
-
-
-MODEL = config["settings"]["model"]
-
-FFMPEG = shutil.which("ffmpeg")
-
-if not FFMPEG:
-    FFMPEG = ".venv/lib/python3.12/site-packages/imageio_ffmpeg/binaries/ffmpeg-macos-aarch64-v7.1"
-
-if not FFMPEG:
-    raise RuntimeError("FFmpeg not found")
-
-
-detector = BarkDetector(
-    BARK_THRESHOLD,
-    DOG_THRESHOLD,
-    BARK_RELEASE_SECONDS
-)
-
-ha = HABridge(
-    config["mqtt"],
-    config["device"]
-)
-
-
-
-interpreter = Interpreter(model_path=MODEL)
-interpreter.allocate_tensors()
-
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-logger.info("RTSP Bark Detector ready")
-
-cmd = [
-    FFMPEG,
-    "-rtsp_transport", "tcp",
-    "-i", RTSP_URL,
-    "-vn",
-    "-ac", "1",
-    "-ar", "16000",
-    "-f", "s16le",
-    "-"
-]
-
-
-logger.info("Connecting to RTSP audio...")
-
-
-process = subprocess.Popen(
-    cmd,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.DEVNULL
-)
-
-
-logger.info("Listening for barking...")
+def load_config():
+    with open("config.yaml", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+    if os.path.exists("/data/options.json"):
+        with open("/data/options.json", encoding="utf-8") as file:
+            options = json.load(file)
+        for option, section, key in (
+            ("rtsp_url", "camera", "rtsp_url"),
+            ("bark_threshold", "thresholds", "bark"),
+            ("dog_threshold", "thresholds", "dog"),
+            ("bark_release_seconds", "settings", "bark_release_seconds"),
+        ):
+            config[section][key] = options.get(option, config[section][key])
+    config["mqtt"] = {
+        "broker": os.environ["MQTT_HOST"],
+        "port": int(os.environ["MQTT_PORT"]),
+        "username": os.environ["MQTT_USERNAME"],
+        "password": os.environ["MQTT_PASSWORD"],
+    }
+    if not config["camera"]["rtsp_url"].startswith(("rtsp://", "rtsps://")):
+        raise ValueError("Set a valid rtsp_url in the add-on configuration")
+    for key in ("bark", "dog"):
+        value = float(config["thresholds"][key])
+        if not 0 <= value <= 1:
+            raise ValueError("Bark and dog thresholds must be between 0 and 1")
+        config["thresholds"][key] = value
+    release = float(config["settings"]["bark_release_seconds"])
+    if not math.isfinite(release) or release < 0:
+        raise ValueError("bark_release_seconds must be non-negative")
+    config["settings"]["bark_release_seconds"] = release
+    return config
 
 
 def shutdown_handler(signum, frame):
-
     logger.info("Stopping RTSP Bark Detector...")
-
-    if process:
-        process.terminate()
-        process.wait()
-
-    logger.info("Shutdown complete")
-
-    raise SystemExit
+    raise SystemExit(0)
 
 
-signal.signal(signal.SIGINT, shutdown_handler)
-signal.signal(signal.SIGTERM, shutdown_handler)
+def run():
+    config = load_config()
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg not found")
+    classifier = BarkClassifier(config["settings"]["model"])
+    logger.info("YAMNet ready | %s samples at %s Hz | Bark=%s Dog=%s",
+                classifier.samples_per_window, classifier.sample_rate,
+                classifier.bark_index, classifier.dog_index)
+    detector = BarkDetector(config["thresholds"]["bark"], config["thresholds"]["dog"],
+                            config["settings"]["bark_release_seconds"])
+    ha = HABridge(config["mqtt"], config["device"])
+    stream = None
+    next_score_log = 0
+    try:
+        logger.info("RTSP Bark Detector ready")
+        while True:
+            try:
+                logger.info("Connecting to RTSP audio...")
+                stream = AudioStream(ffmpeg, config["camera"]["rtsp_url"])
+                first_chunk = True
+                while True:
+                    pcm = stream.read(classifier.samples_per_window * 2)
+                    if first_chunk:
+                        logger.info("RTSP audio stream active")
+                        first_chunk = False
+                    bark_score, dog_score = classifier.classify_pcm(pcm)
+                    now = time.monotonic()
+                    if now >= next_score_log:
+                        logger.info("Classifier active | Bark=%.4f Dog=%.4f", bark_score, dog_score)
+                        next_score_log = now + 60
+                    event = detector.update(bark_score, dog_score)
+                    if event:
+                        ha.process_event(event)
+            except AudioStreamError as error:
+                logger.warning("%s; reconnecting in 5 seconds", error)
+            finally:
+                if stream is not None:
+                    stream.close()
+                    stream = None
+            time.sleep(5)
+    finally:
+        ha.client.disconnect()
+        ha.client.loop_stop()
+        logger.info("Shutdown complete")
 
 
-while True:
-
-    audio_chunk = process.stdout.read(16000 * 2)
-
-    if not audio_chunk:
-        time.sleep(0.1)
-        continue
-
-
-    audio = np.frombuffer(
-        audio_chunk,
-        dtype=np.int16
-    )
-
-    audio = audio.astype(np.float32) / 32768.0
-
-
-    audio_data = AudioData.create_from_array(
-        audio,
-        sample_rate=16000
-    )
-
-
-    result = classifier.classify(audio_data)
-
-
-    bark_score = 0
-    dog_score = 0
-
-
-    for category in result[0].classifications[0].categories:
-
-        if category.category_name == "Bark":
-            bark_score = category.score
-
-        elif category.category_name == "Dog":
-            dog_score = category.score
-
-
-    event = detector.update(
-        bark_score,
-        dog_score
-    )
-
-
-    if event:
-        ha.process_event(event)
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    try:
+        run()
+    except Exception:
+        logger.exception("RTSP Bark Detector failed")
+        raise SystemExit(1)
