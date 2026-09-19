@@ -7,6 +7,7 @@ import signal
 import time
 
 import yaml
+import numpy as np
 
 from audio_stream import AudioStream, AudioStreamError
 from classifier import BarkClassifier
@@ -54,6 +55,17 @@ def shutdown_handler(signum, frame):
     raise SystemExit(0)
 
 
+def audio_windows(stream, window_samples, hop_samples=7680):
+    """Consume every PCM sample, analyzing 975 ms with a 480 ms stride."""
+    if not 0 < hop_samples <= window_samples:
+        raise ValueError("Audio hop must fit inside the analysis window")
+    pcm = stream.read(window_samples * 2)
+    yield pcm
+    while True:
+        pcm = pcm[hop_samples * 2:] + stream.read(hop_samples * 2)
+        yield pcm
+
+
 def run():
     config = load_config()
     ffmpeg = shutil.which("ffmpeg")
@@ -67,7 +79,6 @@ def run():
                             config["settings"]["bark_release_seconds"])
     ha = HABridge(config["mqtt"], config["device"])
     stream = None
-    next_score_log = 0
     try:
         logger.info("RTSP Bark Detector ready")
         while True:
@@ -75,16 +86,37 @@ def run():
                 logger.info("Connecting to RTSP audio...")
                 stream = AudioStream(ffmpeg, config["camera"]["rtsp_url"])
                 first_chunk = True
-                while True:
-                    pcm = stream.read(classifier.samples_per_window * 2)
+                next_score_log = 0
+                peak_bark = peak_dog = peak_audio = max_inference_ms = 0.0
+                windows = 0
+                logger.info("Continuous audio | window=975 ms hop=480 ms | thresholds Bark=%.2f Dog=%.2f",
+                            detector.bark_threshold, detector.dog_threshold)
+                for pcm in audio_windows(stream, classifier.samples_per_window):
                     if first_chunk:
                         logger.info("RTSP audio stream active")
                         first_chunk = False
+                    inference_start = time.monotonic()
                     bark_score, dog_score = classifier.classify_pcm(pcm)
+                    max_inference_ms = max(max_inference_ms, (time.monotonic() - inference_start) * 1000)
+                    windows += 1
+                    if bark_score >= peak_bark:
+                        peak_bark, peak_dog = bark_score, dog_score
+                    waveform = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+                    peak_audio = max(peak_audio, float(np.sqrt(np.mean(waveform * waveform))))
+                    if bark_score >= 0.10:
+                        logger.info("Bark candidate | Bark=%.4f Dog=%.4f | accepted=%s",
+                                    bark_score, dog_score,
+                                    bark_score >= detector.bark_threshold and dog_score >= detector.dog_threshold)
                     now = time.monotonic()
                     if now >= next_score_log:
-                        logger.info("Classifier active | Bark=%.4f Dog=%.4f", bark_score, dog_score)
-                        next_score_log = now + 60
+                        logger.info("Audio active | windows=%d | peak Bark=%.4f Dog=%.4f | audio=%.1f dBFS | inference max=%.1f ms",
+                                    windows, peak_bark, peak_dog,
+                                    20 * math.log10(max(peak_audio, 1e-10)), max_inference_ms)
+                        if max_inference_ms >= 480:
+                            logger.warning("Classifier slower than the audio stride; detection may lag behind live audio")
+                        next_score_log = now + 5
+                        peak_bark = peak_dog = peak_audio = max_inference_ms = 0.0
+                        windows = 0
                     event = detector.update(bark_score, dog_score)
                     if event:
                         ha.process_event(event)
